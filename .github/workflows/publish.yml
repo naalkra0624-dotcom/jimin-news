@@ -1,0 +1,44 @@
+# 승인.txt 를 고치면 사이트를 다시 만듭니다.
+# 기사를 새로 모으지 않으므로 돈이 들지 않고 몇 초면 끝납니다.
+name: 승인하면 발행
+
+on:
+  push:
+    paths:
+      - "승인.txt"
+      - "만들기.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jimin-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 사이트 만들기
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python 만들기.py
+
+      - name: 저장
+        run: |
+          git config user.name  "지민뉴스 자동발행"
+          git config user.email "actions@github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "바뀐 것이 없습니다."
+          else
+            git commit -m "발행 $(date -u +%Y-%m-%d\ %H:%M)"
+            git push
+          fi
