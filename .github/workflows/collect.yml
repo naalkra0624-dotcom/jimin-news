@@ -50,7 +50,19 @@ jobs:
           git add -A
           if git diff --staged --quiet; then
             echo "바뀐 것이 없습니다."
-          else
-            git commit -m "수집 $(date -u +%Y-%m-%d)"
-            git push
+            exit 0
           fi
+          git commit -m "수집 $(date -u +%Y-%m-%d)"
+          # 밀어 넣는 사이에 저장소가 먼저 바뀔 수 있습니다.
+          # (검수 커밋과 자동 수집이 겹칠 때) 그럴 땐 받아서 다시 얹고 재시도합니다.
+          for i in 1 2 3 4 5; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "저장했습니다."
+              exit 0
+            fi
+            echo "저장소가 먼저 바뀌었습니다 — 다시 맞춰서 시도합니다 ($i/5)"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || exit 1
+            sleep 3
+          done
+          echo "다섯 번 시도했지만 저장하지 못했습니다."
+          exit 1
