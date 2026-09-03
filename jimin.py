@@ -85,10 +85,71 @@ OUT  = os.path.join(HERE, "결과.html")
         "hankyung", "ytn.co.kr", "newsis", "edaily", "sportskeeda", "allkpop",
         "soompi", "kpopstarz", "koreaboo", "mydaily", "osen", "xportsnews",
         "sportsseoul", "spotvnews", "tvreport", "wowtv", "mbn.co.kr", "sbs.co.kr",
-        "imbc", "joynews24", "starnewskorea", "topstarnews", "newsen"]
+        "imbc", "joynews24", "starnewskorea", "topstarnews", "newsen",
+        # ★ 한국 연예뉴스를 그 나라 말로 옮기기만 하는 매체들.
+        #   국적은 해외지만 내용은 국내 기사의 번역본이라 '해외의 시선'이 아닙니다.
+        "wowkorea", "thefirsttimes", "kstyle.com", "kpopmonster", "sportsdonga",
+        "kbanhada", "danmee", "hanryutimes", "kpopn", "koreastardaily",
+        "kpopstarz", "kpopherald", "kdramastars", "hellokpop", "kprofiles"]
+
+# 매체가 아닌 것 —— 링크 단축 서비스, SNS, 집계 사이트
+비매체 = ["t.co", "bit.ly", "goo.gl", "ift.tt", "dlvr.it", "buff.ly", "tinyurl",
+       "twitter.com", "x.com", "facebook.com", "instagram.com", "youtube.com",
+       "reddit.com", "pinterest", "tumblr.com", "medium.com", "blogspot",
+       "wordpress.com", "news.google.com"]
 
 건너뛸말 = ["photos of", "in pictures", "quiz", "horoscope", "merch sale",
         "how to watch", "where to buy", "giveaway"]
+
+# ── 매체 주소로 진짜 국적을 알아냅니다 ─────────────────────
+# 지금까지 표시하던 '나라'는 매체의 국적이 아니라 '검색한 지역'이었습니다.
+# 그래서 베트남 매체가 멕시코로, 필리핀 매체가 미국으로 나왔습니다.
+나라코드 = {
+    "ph": "필리핀", "in": "인도", "id": "인도네시아", "jp": "일본", "vn": "베트남",
+    "mx": "멕시코", "es": "스페인", "br": "브라질", "fr": "프랑스", "de": "독일",
+    "it": "이탈리아", "uk": "영국", "au": "호주", "ca": "캐나다", "sg": "싱가포르",
+    "my": "말레이시아", "th": "태국", "tw": "대만", "hk": "홍콩", "cn": "중국",
+    "ar": "아르헨티나", "cl": "칠레", "co": "콜롬비아", "pe": "페루", "tr": "튀르키예",
+    "ru": "러시아", "pl": "폴란드", "nl": "네덜란드", "se": "스웨덴", "pt": "포르투갈",
+    "ng": "나이지리아", "za": "남아공", "eg": "이집트", "sa": "사우디", "ae": "UAE",
+    "pk": "파키스탄", "bd": "방글라데시", "np": "네팔", "lk": "스리랑카",
+}
+매체국적 = {   # 주소만으로는 알 수 없는 곳들
+    "inquirer.net": "필리핀", "philstar.com": "필리핀", "rappler.com": "필리핀",
+    "gmanetwork.com": "필리핀", "manilatimes.net": "필리핀",
+    "timesofindia": "인도", "hindustantimes": "인도", "indiatoday": "인도",
+    "ndtv.com": "인도", "thehindu.com": "인도", "firstpost.com": "인도",
+    "economictimes": "인도", "news18.com": "인도", "indianexpress": "인도",
+    "folha.uol": "브라질", "globo.com": "브라질", "uol.com.br": "브라질",
+    "elpais.com": "스페인", "elmundo.es": "스페인", "marca.com": "스페인",
+    "milenio.com": "멕시코", "eluniversal.com.mx": "멕시코", "excelsior.com.mx": "멕시코",
+    "infobae.com": "아르헨티나", "clarin.com": "아르헨티나",
+    "straitstimes": "싱가포르", "channelnewsasia": "싱가포르",
+    "bbc.co.uk": "영국", "bbc.com": "영국", "theguardian": "영국",
+    "independent.co.uk": "영국", "dailymail": "영국", "nme.com": "영국",
+    "billboard.com": "미국", "rollingstone.com": "미국", "variety.com": "미국",
+    "forbes.com": "미국", "people.com": "미국", "usatoday": "미국",
+    "hollywoodreporter": "미국", "nytimes.com": "미국", "cnn.com": "미국",
+    "teenvogue.com": "미국", "buzzfeed.com": "미국", "vogue.com": "미국",
+    "lemonde.fr": "프랑스", "lefigaro.fr": "프랑스",
+    "asahi.com": "일본", "yomiuri.co.jp": "일본", "nikkei.com": "일본",
+    "oricon.co.jp": "일본", "natalie.mu": "일본", "modelpress.jp": "일본",
+}
+
+
+def 매체나라(주소, 검색지역):
+    """기사 주소로 매체의 진짜 국적을 알아낸다. 모르면 검색 지역을 그대로 쓴다."""
+    글 = (주소 or "").lower()
+    for 조각, 나라 in 매체국적.items():
+        if 조각 in 글:
+            return 나라
+    m = re.search(r"https?://[^/]*?\.([a-z]{2})(?:/|$|:)", 글)
+    if m and m.group(1) in 나라코드:
+        return 나라코드[m.group(1)]
+    m = re.search(r"https?://[^/]*?\.(?:com|net|org|co)\.([a-z]{2})\b", 글)
+    if m and m.group(1) in 나라코드:
+        return 나라코드[m.group(1)]
+    return 검색지역
 
 # ══════════════════════════════════════════════════════════════
 #  동명이인 걸러내기  ★ '지민'은 흔한 이름입니다
@@ -127,6 +188,32 @@ OUT  = os.path.join(HERE, "결과.html")
 #   이런 것들은 뺐습니다. 뺀 성씨는 앞 순서(Song Jimin)로는 여전히 잡힙니다.
 _뒤순서_제외 = {"song", "sung", "min", "ha", "oh", "no", "noh", "so", "won"}
 성씨_로마자_뒤 = [s for s in 성씨_로마자 if s not in _뒤순서_제외]
+
+# ★★ 일본 매체는 이름을 가타카나로 씁니다 —— キム・ジミン(김지민),
+#    ハン・ジミン(한지민) 이 그대로 통과하고 있었습니다.
+#    일본어 기사가 수집의 큰 몫이라 구멍이 컸습니다. パク(박)는 뺍니다.
+성씨_가타카나 = ["キム", "イ", "リ", "チェ", "チョン", "カン", "チョ", "ユン", "チャン",
+           "イム", "ハン", "オ", "ソ", "シン", "クォン", "ファン", "アン", "ソン",
+           "リュ", "ホン", "コ", "ムン", "ヤン", "ペ", "ペク", "ホ", "ユ", "ナム",
+           "シム", "ノ", "ハ", "クァク", "チャ", "チュ", "ウ", "ク", "ミン", "チン",
+           "チ", "オム", "ウォン", "パン", "コン", "ヒョン", "ハム", "ピョン", "ヨム",
+           "ヨ", "ト", "ソク", "ソル", "マ", "キル", "ウィ", "ピョ", "ミョン", "キ",
+           "ワン", "クム", "オク", "ユク", "イン", "メン", "モ", "タク", "ウン", "ヨン"]
+
+# 일본 기사는 한자로도 씁니다 —— 文ジミン(문지민), 韓ジミン(한지민).
+# 朴(박)은 BTS 지민의 성이라 뺍니다.
+성씨_한자 = ("金李崔鄭姜趙尹張林韓呉徐申権黄安宋柳全洪高文楊孫裵白許劉"
+         "南沈盧河郭成車朱禹具閔陳池厳蔡元千方孔玄咸卞廉呂秋都蘇石"
+         "宣薛馬吉魏表明奇潘王琴玉陸印孟諸牟卓鞠魚殷片龍")
+
+# 매체가 아니라 남의 글을 긁어 올리는 곳 —— 제목 끝에 정체불명의 코드가 붙습니다.
+#   예) "...Giants Game Today (hPqJdxR6YH)"
+잡음제목 = [
+    re.compile(r"\([A-Za-z0-9]{8,14}\)\s*$"),      # 끝에 붙은 임의 코드
+    re.compile(r"\bon instagram:", re.I),           # 인스타그램 게시물 전재
+    re.compile(r"(?:#\w+[\s,]*){3,}"),              # 해시태그 나열
+    re.compile(r"\|\|"),                            # || 로 꾸민 팬아트 제목
+]
 
 # BTS 지민임을 확실히 해주는 말
 지민_문맥 = ["bts", "방탄", "방탄소년단", "아미", "army", "하이브", "hybe",
@@ -230,8 +317,16 @@ def 한국매체인가(글):
     return any(d in (글 or "").lower() for d in 한국매체)
 
 
+def 비매체인가(글):
+    """t.co 같은 링크 단축 주소나 SNS 는 '매체'가 아닙니다."""
+    낮 = (글 or "").lower()
+    # 구글 뉴스 주소 자체는 링크 형태라 걸리므로, 매체명 쪽만 봅니다
+    return any(d in 낮 for d in 비매체 if d != "news.google.com")
+
+
 _동명이인_한글 = None
 _동명이인_로마자 = None
+_동명이인_가타카나 = None
 
 
 def 동명이인_이름(글):
@@ -241,14 +336,23 @@ def 동명이인_이름(글):
     한국어는 성이 앞, 영어권 기사는 성이 뒤로 가므로 양쪽 다 봅니다.
     박지민은 BTS 지민의 본명이라 여기서 제외하고, 따로 판단합니다.
     """
-    global _동명이인_한글, _동명이인_로마자
+    global _동명이인_한글, _동명이인_로마자, _동명이인_가타카나
     if _동명이인_한글 is None:
         _동명이인_한글 = re.compile(f"[{성씨_한글자}]지민")
         앞 = r"(?:" + "|".join(성씨_로마자) + r")[ \-]?jimin"
         뒤 = r"jimin[ \-](?:" + "|".join(성씨_로마자_뒤) + r")"
         _동명이인_로마자 = re.compile(
             r"(?<![\w-])(?:" + 앞 + r"|" + 뒤 + r")(?![\w-])")
-    return bool(_동명이인_한글.search(글) or _동명이인_로마자.search(글))
+        # 긴 성씨부터 맞춰야 'チョン' 이 'チ' 로 잘리지 않습니다.
+        # 앞에 다른 가타카나가 있으면 성씨가 아닙니다 —— パク・ジミン(BTS 본명)의
+        # 'ク' 만 떼어 잡는 것을 막습니다.
+        긴것부터 = sorted(성씨_가타카나, key=len, reverse=True)
+        _동명이인_가타카나 = re.compile(
+            r"(?<![ァ-ヴー])(?:(?:" + "|".join(긴것부터) + r")"
+            r"|[" + 성씨_한자 + r"])[・･\s]?ジミン")
+    return bool(_동명이인_한글.search(글)
+                or _동명이인_로마자.search(글)
+                or _동명이인_가타카나.search(글))
 
 
 def 국내기사_지민인가(제목, 설명=""):
@@ -379,9 +483,21 @@ def 기사모으기():
         if any(w in a["제목"].lower() for w in 건너뛸말):
             통계["잡음"] += 1
             continue
+        # 남의 글을 긁어 올리는 곳 —— 제목 끝에 정체불명의 코드가 붙습니다
+        if any(r.search(a["제목"]) for r in 잡음제목):
+            통계["잡음"] += 1
+            continue
         if 한국매체인가(f'{a["링크"]} {a["매체홈"]} {a["매체"]}'):
             통계["한국매체"] += 1
             continue
+        # t.co 같은 링크 단축 주소는 매체가 아닙니다
+        if 비매체인가(f'{a["매체홈"]} {a["매체"]}'):
+            통계["비매체"] += 1
+            continue
+        # ★ 지금까지 '나라'에 검색한 지역을 넣고 있었습니다.
+        #   베트남 매체가 멕시코로 나오던 원인입니다. 매체 주소로 바로잡습니다.
+        a["검색지역"] = a["나라"]
+        a["나라"] = 매체나라(f'{a["매체홈"]} {a["링크"]}', a["나라"])
 
         본문 = f'{a["제목"]} {a["설명"]}'
         if not 단어있나(본문, 필수이름):
@@ -409,6 +525,7 @@ def 기사모으기():
         고름.append(a)
 
     print(f"\n        수집 {len(모음)}건 → 중복 {통계['중복']} · 한국매체 {통계['한국매체']} · "
+          f"비매체 {통계['비매체']} · "
           f"지민 없음 {통계['지민없음']} · 동명이인 {통계['동명이인']} · 잡음 {통계['잡음']}"
           + (f" · BTS 없음 {통계['BTS없음']}" if 그룹도_반드시 else "")
           + (f" · 매체 편중 {통계['매체편중']}" if 통계['매체편중'] else ""))
