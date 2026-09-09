@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape as e
 from urllib.parse import quote
 
@@ -28,6 +28,11 @@ HERE   = os.path.dirname(os.path.abspath(__file__))
            "소개하고 원문으로 연결할 뿐이며, 본문을 번역하거나 전재하지 않습니다.")
 
 저장소 = os.environ.get("GITHUB_REPOSITORY", "")   # 깃허브가 알아서 넣어 줍니다
+
+# 이 날수가 지난 기사는 승인돼 있어도 사이트에서 내려갑니다.
+# 검수를 며칠 건너뛰어도 사이트가 몇 주 전 뉴스로 남아 있지 않게 하려는 것입니다.
+# 0 으로 두면 안 내려갑니다.
+사이트_유지일 = 21
 
 
 CSS = """
@@ -224,8 +229,13 @@ def 사건묶기(기사들, 날짜폭=14):
     for 덩 in 덩어리:
         대표 = next((x for x in 덩 if x.get("한글제목")), 덩[0])
         b = dict(대표)
-        글 = f'{대표.get("한글제목") or 대표.get("제목","")} {대표.get("요약","")}'
-        b["_낱말"], b["_주제"] = _낱말(글), _주제(글)
+        제목 = 대표.get("한글제목") or 대표.get("제목", "")
+        # ★ 낱말은 '제목'에서만 뽑습니다.
+        #   요약은 "…관련 해외 보도다" 같은 상투적인 말이 겹쳐서,
+        #   전혀 다른 사건끼리 붙어 버립니다. 실제로 그랬습니다.
+        #   주제군만 요약까지 함께 봅니다 (소아암/기부 같은 핵심어 포착용).
+        b["_낱말"] = _낱말(제목)
+        b["_주제"] = _주제(f'{제목} {대표.get("요약","")}')
         b["_식구"] = [x for x in 덩 if x is not 대표]
         준비.append(b)
     # 대표는 '가장 잘 설명한 기사'로 세웁니다.
@@ -356,16 +366,21 @@ def 사이트만들기(무리들, 승인목록):
 
     # 무리 안의 어느 기사든 승인돼 있으면 실립니다.
     # 수집이 쌓이면서 대표가 바뀌어도 사이트에서 사라지지 않게 하려는 것입니다.
-    실린것 = []
+    한계 = (datetime.now(timezone.utc) - timedelta(days=사이트_유지일)) if 사이트_유지일 else None
+    실린것, 내려간것 = [], 0
     for 무리 in 무리들:
         고른 = [a for a in 무리 if a["id"] in 골라진]
         if not 고른:
             continue
         머리기사 = min(고른, key=lambda a: 골라진[a["id"]])
+        # 오래된 기사는 승인돼 있어도 내립니다
+        if 한계 and max((_날(a) for a in 무리), default=datetime(1970, 1, 1)) < 한계.replace(tzinfo=None):
+            내려간것 += 1
+            continue
         나머지 = [a for a in 무리 if a["id"] != 머리기사["id"]]
-        실린것.append(([머리기사] + 나머지, 골라진[머리기사["id"]]))
-    실린것.sort(key=lambda x: x[1])
-    실린것 = [무리 for 무리, _ in 실린것]
+        실린것.append([머리기사] + 나머지)
+    # 최신 기사가 위로 —— 승인한 순서가 아니라 날짜 순입니다
+    실린것.sort(key=lambda m: max((a.get("날짜") or "") for a in m), reverse=True)
 
     시각 = datetime.now(timezone.utc).astimezone().strftime("%Y년 %m월 %d일")
     영건 = sum(1 for 무리 in 실린것
@@ -373,12 +388,18 @@ def 사이트만들기(무리들, 승인목록):
     나라수 = len({a.get("나라") for 무리 in 실린것 for a in 무리 if a.get("나라")})
     기사수 = sum(len(무리) for 무리 in 실린것)
 
+    최신 = max((max((a.get("날짜") or "") for a in m) for m in 실린것), default="")
+    며칠 = ""
+    if 최신:
+        차 = (datetime.now(timezone.utc).replace(tzinfo=None) - _날({"날짜": 최신})).days
+        며칠 = "오늘" if 차 <= 0 else ("어제" if 차 == 1 else f"{차}일 전")
+
     글 = [머리(사이트이름, 한줄설명)]
     글.append(f"""<div class="bar">
       <div class="stat"><b>{len(실린것)}</b><span>실린 사건</span></div>
       <div class="stat"><b>{영건}</b><span>국내 0건</span></div>
       <div class="stat"><b>{기사수}</b><span>해외 기사</span></div>
-      <div class="stat"><b>{나라수}</b><span>나라</span></div>
+      <div class="stat"><b>{e(며칠) or "—"}</b><span>가장 최신</span></div>
     </div>""")
 
     if not 실린것:
@@ -387,7 +408,9 @@ def 사이트만들기(무리들, 승인목록):
         글.append(카드(무리))
 
     글.append(f'<footer>{e(꼬리말)}<br><br>{e(시각)} 갱신 · 3일마다 새로 모읍니다'
-              f'</footer></div></html>')
+              + (f' · {사이트_유지일}일이 지난 기사는 자동으로 내려갑니다'
+                 if 사이트_유지일 else '')
+              + '</footer></div></html>')
 
     os.makedirs(문서함, exist_ok=True)
     with open(os.path.join(문서함, "index.html"), "w", encoding="utf-8") as f:
