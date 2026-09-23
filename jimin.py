@@ -24,7 +24,7 @@ except ImportError:
 
 # 이 숫자는 실행 화면과 결과.html 맨 아래에 찍힙니다.
 # 파일을 제대로 바꿨는지 확인할 때 쓰세요.
-버전 = "2026-08-17 (동명이인 앞뒤 어순)"
+버전 = "2026-09-24 (국내 매칭 정밀화 · .kr 제외)"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV  = os.path.join(HERE, "키.txt")
@@ -108,6 +108,7 @@ OUT  = os.path.join(HERE, "결과.html")
         "soompi", "kpopstarz", "koreaboo", "mydaily", "osen", "xportsnews",
         "sportsseoul", "spotvnews", "tvreport", "wowtv", "mbn.co.kr", "sbs.co.kr",
         "imbc", "joynews24", "starnewskorea", "topstarnews", "newsen",
+        "sbsstar", "sbs star", "mediafine", "mbcplus", "tvdaily", "sportsq",
         # ★ 한국 연예뉴스를 그 나라 말로 옮기기만 하는 매체들.
         #   국적은 해외지만 내용은 국내 기사의 번역본이라 '해외의 시선'이 아닙니다.
         "wowkorea", "thefirsttimes", "kstyle.com", "kpopmonster", "sportsdonga",
@@ -335,8 +336,16 @@ def 단어있나(글, 목록):
     return False
 
 
+# ★ 목록을 하나씩 적는 방식은 계속 샙니다 (global.mediafine.co.kr 이 통과했습니다).
+#   주소가 .kr 로 끝나면 한국 매체입니다. .co.kr · .or.kr · .go.kr 전부요.
+_한국주소 = re.compile(r"(?:https?://|[\s/])[^\s/]*\.kr(?=[/:?#\s]|$)")
+
+
 def 한국매체인가(글):
-    return any(d in (글 or "").lower() for d in 한국매체)
+    낮 = (글 or "").lower()
+    if any(d in 낮 for d in 한국매체):
+        return True
+    return bool(_한국주소.search(낮))
 
 
 def 비매체인가(글):
@@ -377,6 +386,24 @@ def 동명이인_이름(글):
                 or _동명이인_가타카나.search(글))
 
 
+# 여러 연예인을 줄세우는 집계 기사에 나오는 말들
+순위말 = ["계단", "열독", "좋아요", "브랜드평판", "브랜드 평판", "화제성",
+       "랭킹", "순위", "top3", "top5", "top10", "차트인", "제치고"]
+
+
+def 나열기사(제목):
+    """'임영웅 1위·이찬원 2위·BTS 3위, 효연 112계단↑' 같은 줄세우기 기사인가.
+
+    지민 이름이 목록에 스쳐 있을 뿐, 그 기사의 주제가 아닙니다.
+    이런 걸 국내 보도로 세면 미보도 판정이 무너집니다.
+    """
+    글 = (제목 or "").lower()
+    if "계단" in 글 and ("↑" in 글 or "↓" in 글):
+        return True
+    가운뎃점 = 글.count("·") + 글.count("ㆍ") + 글.count("ㅣ")
+    return 가운뎃점 >= 1 and any(w in 글 for w in 순위말)
+
+
 def 국내기사_지민인가(제목, 설명=""):
     """국내 기사가 정말 BTS 지민에 관한 것인지 본다.
 
@@ -396,6 +423,20 @@ def 국내기사_지민인가(제목, 설명=""):
     if 동명이인_이름(글):
         return False
 
+    # ★★ '지민' 이라는 말 자체가 없으면 지민 보도가 아닙니다.
+    #   예전에는 'BTS' 만 있어도 인정했습니다. 그래서
+    #     "임영웅 11회째 1위·이찬원 2위·BTS 3위"
+    #     "BTS 뷔, 후드 셀카로 근황 전해"
+    #   같은 기사가 전부 '지민 국내 보도'로 세어졌습니다.
+    #   국내수가 부풀려지면 진짜 미보도 기사가 🟡·⚪ 로 밀려납니다.
+    if "지민" not in 글:
+        return False
+
+    # 여러 연예인을 나열하는 순위·집계 기사는 '보도'로 보지 않습니다.
+    # 지민 이름이 스쳐 지나갈 뿐 그 기사의 주제가 아닙니다.
+    if 나열기사(제목):
+        return False
+
     문맥있음 = any(w in 글 for w in 지민_문맥)
 
     # 다른 직업이 붙어 있으면, BTS 문맥이 없는 한 제외
@@ -409,7 +450,7 @@ def 국내기사_지민인가(제목, 설명=""):
     if "박지민" in 글:
         return False
 
-    return "지민" in 글
+    return True
 
 
 def 실제주소(구글링크):
