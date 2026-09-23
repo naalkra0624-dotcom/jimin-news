@@ -736,17 +736,34 @@ def 클로드(키, 프롬프트):
     return json.loads(m.group())
 
 
-def 네이버(키, 검색어):
-    try:
-        r = requests.get("https://openapi.naver.com/v1/search/news.json", timeout=20,
-                         headers={"X-Naver-Client-Id": 키["NAVER_ID"],
-                                  "X-Naver-Client-Secret": 키["NAVER_SECRET"]},
-                         params={"query": 검색어, "display": 20, "sort": "date"})
-        if r.status_code != 200:
-            return None
-        return r.json().get("items", [])
-    except Exception:
-        return None
+def 네이버(키, 검색어, 시도=3):
+    """국내 뉴스를 찾는다. (상태, 결과) 를 돌려준다.
+
+    상태는 "정상" / "키문제" / "너무빠름" / "일시오류" 중 하나입니다.
+    예전에는 무엇이 잘못됐든 전부 '키를 확인하세요' 라고만 했습니다.
+    초당 호출 제한에 걸린 것을 키 문제로 오해하게 만드는 잘못된 안내였습니다.
+    """
+    기다림 = 1.0
+    for 번째 in range(시도):
+        try:
+            r = requests.get("https://openapi.naver.com/v1/search/news.json", timeout=20,
+                             headers={"X-Naver-Client-Id": 키["NAVER_ID"],
+                                      "X-Naver-Client-Secret": 키["NAVER_SECRET"]},
+                             params={"query": 검색어, "display": 20, "sort": "date"})
+            if r.status_code == 200:
+                return "정상", r.json().get("items", [])
+            if r.status_code in (401, 403):
+                return "키문제", None          # 다시 시도해도 소용없습니다
+            if r.status_code == 429:
+                상태 = "너무빠름"
+            else:
+                상태 = "일시오류"
+        except Exception:
+            상태 = "일시오류"
+        if 번째 < 시도 - 1:
+            time.sleep(기다림)                 # 잠깐 쉬었다 다시
+            기다림 *= 2.5
+    return 상태, None
 
 
 def 판정하기(키, 기사들):
@@ -769,7 +786,7 @@ def 판정하기(키, 기사들):
               f"정밀검사_최대 를 올리면 더 봅니다.")
     print()
     통과, 제외, 실패 = [], [], None
-    딴사람, 동명이인_제외 = 0, 0
+    딴사람, 동명이인_제외, 판정불가 = 0, 0, 0
 
     for i, 무리 in enumerate(대상, 1):
         a, 따라오는것 = 무리[0], 무리[1:]
@@ -791,12 +808,20 @@ def 판정하기(키, 기사들):
         기준 = 날짜(a["날짜"]) or datetime.now(timezone.utc)
         시작, 끝 = 기준 - timedelta(days=7), 기준 + timedelta(days=7)
         국내, 걸러냄 = {}, 0
+        검색성공 = 0
         for q in (정보.get("검색어") or [])[:3]:
-            항목 = 네이버(키, q)
-            if 항목 is None:
-                if 실패 is None:
-                    실패 = "네이버 검색 실패 — 키를 확인하세요 (키.txt 지우고 다시 실행)"
-                break
+            상태, 항목 = 네이버(키, q)
+            if 상태 != "정상":
+                if 상태 == "키문제":
+                    실패 = ("네이버 키가 거부됐습니다 — Secret 값과, 네이버 개발자센터에서 "
+                          "'검색' API 사용이 체크돼 있는지 확인하세요")
+                elif 실패 is None:
+                    실패 = ("네이버 검색이 일부 실패했습니다 (호출이 몰렸거나 일시적 오류). "
+                          "키 문제가 아니니 다음 수집을 기다리거나 다시 돌려보세요")
+                if 상태 == "키문제":
+                    break
+                continue
+            검색성공 += 1
             for it in 항목:
                 d = 날짜(it.get("pubDate", ""))
                 if not (d and 시작 <= d <= 끝):
@@ -808,8 +833,16 @@ def 판정하기(키, 기사들):
                     걸러냄 += 1
                     continue
                 국내[it.get("originallink") or it.get("link")] = 제목ko
-            time.sleep(0.1)
+            time.sleep(0.15)
         동명이인_제외 += 걸러냄
+
+        # ★★ 국내 검색이 한 번도 성공 못 했으면 '국내 0건' 이 아닙니다.
+        #   '모른다' 입니다. 예전에는 이걸 구분하지 않아서, 검색이 실패한 기사가
+        #   전부 🔴 국내 0건 으로 올라갔습니다. 미보도를 가짜로 부풀리는 버그였습니다.
+        if 검색성공 == 0:
+            판정불가 += len(무리)
+            print(f"     {i:>3}.  ⚠  [국내 확인 실패] {a['제목'][:42]}")
+            continue
 
         주목 = 정보.get("주목도", 3)
         try:
@@ -852,6 +885,9 @@ def 판정하기(키, 기사들):
     if 딴사람 or 동명이인_제외:
         print(f"        동명이인 정리 — 해외 기사 {딴사람}건 제외, "
               f"국내 검색결과 {동명이인_제외}건 무시")
+    if 판정불가:
+        print(f"        ⚠ 국내 확인에 실패한 {판정불가}건은 결과에서 뺐습니다 "
+              f"(확인 못 한 것을 '국내 0건'으로 올리지 않습니다)")
     print()
     return 통과, 제외, 실패
 
