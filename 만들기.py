@@ -124,6 +124,20 @@ summary::-webkit-details-marker{display:none}
 summary::before{content:"▸ ";color:#a09c93}
 details[open] summary{border-radius:11px 11px 0 0;margin-bottom:13px}
 details[open] summary::before{content:"▾ "}
+.flow{margin-bottom:22px}
+.flow summary{font-size:13.5px;font-weight:400;color:#77746d}
+.flow table{width:100%;border-collapse:collapse;font-size:13px;
+ background:#fff;border:1px solid #e7e5e0;border-radius:11px;overflow:hidden}
+.flow td{padding:8px 12px;border-bottom:1px solid #f4f3f0;vertical-align:middle}
+.flow tr:last-child td{border-bottom:0}
+.flow td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;
+ white-space:nowrap;width:1%}
+.flow td.tip{color:#a09c93;font-size:12px}
+.flow tr.crit td{background:#fdf3e1}
+.flow tr.crit td.tip{color:#8a6410;font-weight:600}
+.bar2{width:120px;height:7px;background:#f0eeea;border-radius:4px;overflow:hidden}
+.bar2 i{display:block;height:100%;background:#c9c5bd}
+.tip2{color:#77746d;font-size:12.5px;margin:11px 2px 0;line-height:1.7}
 """
 
 
@@ -432,6 +446,58 @@ def 사이트만들기(무리들, 승인목록):
 #  검수 화면
 # ══════════════════════════════════════════════════════════════
 
+# 걸러진 이름 → 사람이 읽을 말 + 어떻게 고치는지
+_거른이유 = [
+    ("중복",     "같은 제목이 이미 있음",   "정상입니다. 21개국을 훑으니 당연히 겹칩니다"),
+    ("한국매체", "한국 매체·번역판",        "정상입니다. 해외의 시선이 아닙니다"),
+    ("비매체",   "t.co·유튜브 등",          "정상입니다"),
+    ("지민없음", "제목·설명에 지민이 없음", "검색어가 넓어서 딸려온 것들입니다"),
+    ("동명이인", "김지민·한지민 등",        "정상입니다"),
+    ("잡음",     "스팸·팬아트·해시태그",    "정상입니다"),
+    ("BTS없음",  "BTS 언급이 없음",         "그룹도_반드시 를 False 로 두세요"),
+    ("매체편중", "한 매체에서 너무 많음",   "★ 여기가 크면 매체당_최대 를 올리세요"),
+]
+
+
+def 흐름표(수집):
+    """3,588건이 69건으로 줄어드는 구간을 그대로 보여준다.
+
+    이게 없으면 어느 기준을 만져야 하는지 감으로 찍게 됩니다.
+    """
+    거른곳 = 수집.get("걸러진곳") or {}
+    if not 수집.get("훑은기사"):
+        return ""
+    훑음 = int(수집.get("훑은기사") or 0)
+    대상 = int(수집.get("대상") or 0)
+    확인 = int(수집.get("확인") or 0)
+    새것 = int(수집.get("새후보") or 0)
+
+    줄들 = []
+    for 이름, 뜻, 도움 in _거른이유:
+        n = int(거른곳.get(이름) or 0)
+        if not n:
+            continue
+        칸 = min(100, round(n / max(훑음, 1) * 100))
+        굵게 = ' class="crit"' if 이름 == "매체편중" and n >= 대상 else ""
+        줄들.append(f'<tr{굵게}><td>{e(뜻)}</td><td class="n">{n:,}</td>'
+                    f'<td><div class="bar2"><i style="width:{칸}%"></i></div></td>'
+                    f'<td class="tip">{e(도움)}</td></tr>')
+
+    설정 = " · ".join(f"{k} {수집[k]}" for k in
+                    ("최근_며칠", "매체당_최대", "정밀검사_최대", "국내보도_허용")
+                    if k in 수집)
+    남음 = ""
+    if 수집.get("정밀검사_최대") and 대상 < int(수집["정밀검사_최대"]):
+        남음 = (f'<p class="tip2">검사 예산 {수집["정밀검사_최대"]}개 중 {대상}개만 썼습니다. '
+              f'<b>정밀검사_최대를 올려도 늘지 않습니다.</b> 위 표에서 큰 항목을 보세요.</p>')
+
+    return f"""<details class="flow"><summary>기사가 어디서 걸러졌는지 보기
+      ({훑음:,} → {대상} → {확인} → 새 후보 {새것})</summary>
+      <table>{''.join(줄들)}</table>
+      {남음}
+      <p class="tip2">지금 기준 — {e(설정)}</p></details>"""
+
+
 def 검수만들기(무리들, 승인목록, 자료):
     승인집합 = set(승인목록)
     기사들 = 자료["기사"]
@@ -485,6 +551,8 @@ def 검수만들기(무리들, 승인목록, 자료):
     if 수집.get("문제"):
         글.append(f'<div class="step">⚠ 지난 수집에서 문제가 있었습니다 — '
                   f'{e(수집["문제"])}</div>')
+
+    글.append(흐름표(수집))
 
     if not 기사들:
         글.append('<div class="none">후보가 없습니다. 아직 수집이 안 돌았거나 '
