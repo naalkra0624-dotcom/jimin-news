@@ -166,10 +166,13 @@ def 매체나라(주소, 검색지역):
     for 조각, 나라 in 매체국적.items():
         if 조각 in 글:
             return 나라
-    m = re.search(r"https?://[^/]*?\.([a-z]{2})(?:/|$|:)", 글)
+    # ★ 주소 뒤에 공백이 오는 경우를 못 넘겨서 .vn · .es 를 놓쳤습니다.
+    #   (매체홈과 링크를 공백으로 이어 붙여 넘기기 때문입니다)
+    #   그래서 ja.laodong.vn 이 '일본', que.es 가 '멕시코' 로 나왔습니다.
+    m = re.search(r"https?://[^/\s]*?\.([a-z]{2})(?=[/:?#\s]|$)", 글)
     if m and m.group(1) in 나라코드:
         return 나라코드[m.group(1)]
-    m = re.search(r"https?://[^/]*?\.(?:com|net|org|co)\.([a-z]{2})\b", 글)
+    m = re.search(r"https?://[^/\s]*?\.(?:com|net|org|co)\.([a-z]{2})\b", 글)
     if m and m.group(1) in 나라코드:
         return 나라코드[m.group(1)]
     return 검색지역
@@ -690,14 +693,28 @@ def 미리묶기(기사들, 날짜폭=10):
     남, 묶음 = 준비, []
     while 남:
         무리, 남은것 = [남.pop(0)], []
-        for a in 남:
-            기준 = 날짜(무리[0].get("날짜")) or datetime.now(timezone.utc)
-            이것 = 날짜(a.get("날짜")) or 기준
-            if abs((이것 - 기준).days) <= 날짜폭 and _같은사건인가(무리[0], a):
-                무리.append(a)
-            else:
-                남은것.append(a)
-        남 = 남은것
+        # ★ 무리의 '모든' 기사와 견주고, 붙는 것이 없어질 때까지 되풀이합니다.
+        #   예전에는 맨 처음 기사 하나와만 견주고 한 번만 훑었습니다.
+        #   그래서 A~B, B~C 인데 A~C 가 아니면 C 가 떨어져 나갔습니다.
+        #   실제로 같은 사건(Who 플래티넘 인증)이 여섯 무리로 쪼개져,
+        #   같은 일에 여섯 번 돈을 냈습니다.
+        바뀜 = True
+        while 바뀜:
+            바뀜 = False
+            for a in 남:
+                붙나 = False
+                for b in 무리:
+                    기준 = 날짜(b.get("날짜")) or datetime.now(timezone.utc)
+                    이것 = 날짜(a.get("날짜")) or 기준
+                    if abs((이것 - 기준).days) <= 날짜폭 and _같은사건인가(b, a):
+                        붙나 = True
+                        break
+                if 붙나:
+                    무리.append(a)
+                    바뀜 = True
+                else:
+                    남은것.append(a)
+            남, 남은것 = 남은것, []
         for x in 무리:
             x.pop("_표지", None)
         묶음.append(무리)
