@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import jimin
+import 만들기
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 후보파일 = os.path.join(HERE, "후보.json")
@@ -43,10 +44,24 @@ def 후보읽기():
 
 
 def 오래된것_버리기(기사들):
+    """안 고른 후보만 정리합니다. 승인한 기사는 날짜와 상관없이 남깁니다.
+
+    ★ 예전에는 승인한 기사까지 21일 뒤 지워서, 사이트에서도 함께 사라졌습니다.
+      사건 단위로 봅니다 —— 무리 안에 승인된 기사가 하나라도 있으면
+      같은 사건을 받아쓴 기사들도 함께 남깁니다. (사이트에 '해외 N곳' 으로 나옵니다)
+    """
+    승인 = set(만들기.승인읽기())
+    지킬것 = set()
+    for 무리 in 만들기.사건묶기(기사들):
+        if any(a.get("id") in 승인 for a in 무리):
+            지킬것.update(a.get("id") for a in 무리)
+
     한계 = (datetime.now(timezone.utc) - timedelta(days=보관_일수)).strftime("%Y-%m-%d")
-    남김 = [a for a in 기사들 if (a.get("수집일") or "9999") >= 한계]
+    남김 = [a for a in 기사들
+            if a.get("id") in 지킬것 or (a.get("수집일") or "9999") >= 한계]
     if len(남김) != len(기사들):
-        print(f"  {len(기사들) - len(남김)}건은 {보관_일수}일이 지나 목록에서 뺐습니다.")
+        print(f"  안 고른 후보 {len(기사들) - len(남김)}건은 {보관_일수}일이 지나 "
+              f"목록에서 뺐습니다. (승인한 기사는 남깁니다)")
     return 남김
 
 

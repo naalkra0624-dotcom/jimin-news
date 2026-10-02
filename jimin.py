@@ -24,7 +24,7 @@ except ImportError:
 
 # 이 숫자는 실행 화면과 결과.html 맨 아래에 찍힙니다.
 # 파일을 제대로 바꿨는지 확인할 때 쓰세요.
-버전 = "2026-09-24 (국내 매칭 정밀화 · .kr 제외)"
+버전 = "2026-10-03 (현지어 검색 · 승인 기사 유지)"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV  = os.path.join(HERE, "키.txt")
@@ -47,7 +47,7 @@ OUT  = os.path.join(HERE, "결과.html")
                        #   사건 묶기가 중복을 걸러주므로 조일 이유가 없습니다.
 
 # 이름 조건
-필수이름   = ["jimin", "지민", "박지민", "ジミン"]
+필수이름   = ["jimin", "지민", "박지민", "ジミン", "จีมิน"]
 그룹이름   = ["bts", "bangtan", "방탄", "防弾"]
 그룹도_반드시 = False   # True 로 바꾸면 BTS 가 함께 나온 기사만
 
@@ -70,6 +70,56 @@ OUT  = os.path.join(HERE, "결과.html")
     '"Jimin" review OR critic OR analysis',
     '"Jimin" vocal OR dance OR performance',
 ]
+
+# ── 현지어 검색어 ──────────────────────────────────────────
+# ★ 위 검색어는 전부 영어라, 영어가 아닌 지역에서는 거의 안 잡혔습니다.
+#   (브라질 39건 · 프랑스 26건 · 독일 6건 · 튀르키예 2건)
+#   국내에 안 들어오는 기사는 바로 그 현지어 기사들입니다.
+#   영어가 아닌 지역은 위 영어 검색어에 더해 아래 현지어 검색어도 씁니다.
+#   열쇠는 지역의 언어 코드 앞부분입니다 (es-419 → es).
+현지검색어 = {
+    "es": ['Jimin canción OR álbum OR sencillo', 'Jimin concierto OR gira',
+           'Jimin récord OR Billboard OR Spotify', 'Jimin entrevista',
+           'Jimin marca OR embajador', 'Jimin premio OR nominación',
+           'Jimin fans OR ARMY'],
+    "pt": ['Jimin música OR álbum OR single', 'Jimin show OR turnê',
+           'Jimin recorde OR Billboard OR Spotify', 'Jimin entrevista',
+           'Jimin marca OR embaixador', 'Jimin prêmio OR indicação',
+           'Jimin fãs OR ARMY'],
+    "ja": ['ジミン BTS', 'ジミン', 'ジミン 新曲 OR アルバム', 'ジミン ライブ OR コンサート',
+           'ジミン チャート OR ビルボード', 'ジミン インタビュー',
+           'ジミン ブランド OR アンバサダー', 'ジミン ファン OR ARMY'],
+    "id": ['Jimin lagu OR album', 'Jimin konser OR tur',
+           'Jimin rekor OR Billboard OR Spotify', 'Jimin wawancara',
+           'Jimin brand OR duta', 'Jimin penghargaan OR nominasi',
+           'Jimin penggemar OR ARMY'],
+    "vi": ['Jimin bài hát OR album', 'Jimin concert OR lưu diễn',
+           'Jimin kỷ lục OR Billboard OR Spotify', 'Jimin phỏng vấn',
+           'Jimin đại sứ OR thương hiệu', 'Jimin giải thưởng',
+           'Jimin người hâm mộ OR ARMY'],
+    "th": ['จีมิน BTS', 'จีมิน', 'จีมิน เพลง OR อัลบั้ม', 'จีมิน คอนเสิร์ต',
+           'จีมิน แบรนด์ OR แอมบาสเดอร์', 'จีมิน แฟนคลับ OR ARMY'],
+    "fr": ['Jimin chanson OR album', 'Jimin concert OR tournée',
+           'Jimin record OR Billboard OR Spotify', 'Jimin entretien OR interview',
+           'Jimin marque OR ambassadeur', 'Jimin prix OR récompense',
+           'Jimin fans OR ARMY'],
+    "tr": ['Jimin şarkı OR albüm', 'Jimin konser OR turne',
+           'Jimin rekor OR Billboard OR Spotify', 'Jimin röportaj',
+           'Jimin marka OR elçi', 'Jimin ödül', 'Jimin hayranları OR ARMY'],
+    "de": ['Jimin Song OR Album', 'Jimin Konzert OR Tour',
+           'Jimin Rekord OR Charts OR Spotify', 'Jimin Interview',
+           'Jimin Marke OR Botschafter', 'Jimin Preis OR Award',
+           'Jimin Fans OR ARMY'],
+    "it": ['Jimin canzone OR album', 'Jimin concerto OR tour',
+           'Jimin record OR classifica OR Spotify', 'Jimin intervista',
+           'Jimin brand OR ambassador', 'Jimin premio OR nomination',
+           'Jimin fan OR ARMY'],
+}
+
+
+def 지역검색어(hl):
+    """이 지역에서 쓸 검색어. 영어 검색어 + (있으면) 그 나라 말 검색어."""
+    return 검색어들 + 현지검색어.get(hl.split("-")[0].lower(), [])
 
 # ── 어느 나라 뉴스를 볼지 ──────────────────────────────────
 # K팝 보도는 영미권보다 남미·동남아·인도가 훨씬 많고,
@@ -100,14 +150,15 @@ OUT  = os.path.join(HERE, "결과.html")
     ("나이지리아", "en-NG", "NG", "NG:en"),
 ]
 # 지역을 줄이면 빨라집니다. 늘리면 더 많이 잡힙니다.
-# 검색 횟수 = 검색어 수 × 지역 수. 지금은 12 × 21 = 252회, 5~8분쯤 걸립니다.
+# 검색 횟수 = 지역마다 (영어 12개 + 현지어 6~8개). 지금은 350회, 8~12분쯤 걸립니다.
 # 수집 자체는 공짜입니다. 돈이 드는 것은 아래 '정밀검사_최대' 뿐입니다.
 
 # 한국 매체(영문판 포함)는 '해외의 시선'이 아니므로 제외
 한국매체 = ["yna.co.kr", "koreaherald", "koreatimes", "koreajoongang", "chosun",
         "donga", "hani.co.kr", "mk.co.kr", "kbs.co.kr", "korea.net", "sedaily",
-        "hankyung", "ytn.co.kr", "newsis", "edaily", "sportskeeda", "allkpop",
-        "soompi", "kpopstarz", "koreaboo", "mydaily", "osen", "xportsnews",
+        # sportskeeda(인도) · allkpop(미국) · soompi(미국) 는 해외 매체라 뺐습니다.
+        "hankyung", "ytn.co.kr", "newsis", "edaily",
+        "kpopstarz", "koreaboo", "mydaily", "osen", "xportsnews",
         "sportsseoul", "spotvnews", "tvreport", "wowtv", "mbn.co.kr", "sbs.co.kr",
         "imbc", "joynews24", "starnewskorea", "topstarnews", "newsen",
         "sbsstar", "sbs star", "mediafine", "mbcplus", "tvdaily", "sportsq",
@@ -121,7 +172,9 @@ OUT  = os.path.join(HERE, "결과.html")
 비매체 = ["t.co", "bit.ly", "goo.gl", "ift.tt", "dlvr.it", "buff.ly", "tinyurl",
        "twitter.com", "x.com", "facebook.com", "instagram.com", "youtube.com",
        "reddit.com", "pinterest", "tumblr.com", "medium.com", "blogspot",
-       "wordpress.com", "news.google.com"]
+       "wordpress.com", "news.google.com",
+       # 일본 자민당(自民=jimin) 공식 사이트. 이름만 같아 '지민' 으로 잡힙니다.
+       "jimin.jp"]
 
 건너뛸말 = ["photos of", "in pictures", "quiz", "horoscope", "merch sale",
         "how to watch", "where to buy", "giveaway"]
@@ -156,6 +209,7 @@ OUT  = os.path.join(HERE, "결과.html")
     "forbes.com": "미국", "people.com": "미국", "usatoday": "미국",
     "hollywoodreporter": "미국", "nytimes.com": "미국", "cnn.com": "미국",
     "teenvogue.com": "미국", "buzzfeed.com": "미국", "vogue.com": "미국",
+    "allkpop": "미국", "soompi": "미국", "sportskeeda": "인도",
     "lemonde.fr": "프랑스", "lefigaro.fr": "프랑스",
     "asahi.com": "일본", "yomiuri.co.jp": "일본", "nikkei.com": "일본",
     "oricon.co.jp": "일본", "natalie.mu": "일본", "modelpress.jp": "일본",
@@ -333,7 +387,8 @@ def 날짜(s):
 def 단어있나(글, 목록):
     낮 = (글 or "").lower()
     for w in 목록:
-        if re.search(r"[가-힣ぁ-んァ-ン一-龥]", w):   # 한글·일본어는 그냥 포함 검사
+        # 한글·일본어·태국어는 띄어쓰기로 낱말을 못 가르니 그냥 포함 검사
+        if re.search(r"[가-힣ぁ-んァ-ン一-龥฀-๿]", w):
             if w in 낮:
                 return True
         elif re.search(r"(?<![\w-])" + re.escape(w) + r"(?![\w-])", 낮):
@@ -520,14 +575,14 @@ def 한번검색(검색어, hl, gl, ceid):
 
 
 def 기사모으기():
-    총검색 = len(검색어들) * len(지역들)
-    print(f"  [1/3] 전 세계 뉴스를 훑는 중 — 검색어 {len(검색어들)}개 × "
-          f"지역 {len(지역들)}곳 = {총검색}회, 최근 {최근_며칠}일\n")
+    총검색 = sum(len(지역검색어(hl)) for _, hl, _, _ in 지역들)
+    print(f"  [1/3] 전 세계 뉴스를 훑는 중 — 지역 {len(지역들)}곳 · "
+          f"검색 {총검색}회 (영어 {len(검색어들)}개 + 현지어), 최근 {최근_며칠}일\n")
 
     모음, 실패 = [], 0
     for 나라, hl, gl, ceid in 지역들:
         받음 = 0
-        for q in 검색어들:
+        for q in 지역검색어(hl):
             결과, 오류 = 한번검색(q, hl, gl, ceid)
             if 결과 is None:
                 실패 += 1
