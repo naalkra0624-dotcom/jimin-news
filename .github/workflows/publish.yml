@@ -29,27 +29,58 @@ jobs:
       - name: 사이트 만들기
         env:
           PYTHONIOENCODING: utf-8
+          PYTHONDONTWRITEBYTECODE: "1"
         run: python 만들기.py
 
       - name: 저장
         run: |
+          B="${GITHUB_REF_NAME}"
           git config user.name  "지민뉴스 자동발행"
           git config user.email "actions@github.com"
+
+          # 파이썬이 남기는 찌꺼기는 저장소에 들어가면 안 됩니다.
+          # 이게 들어가면 나중에 합칠 수 없는 충돌이 납니다.
+          rm -rf __pycache__
+          git rm -r --cached __pycache__ --ignore-unmatch -q || true
+
           git add -A
           if git diff --staged --quiet; then
             echo "바뀐 것이 없습니다."
             exit 0
           fi
-          git commit -m "발행 $(date -u +%Y-%m-%d\ %H:%M)"
-          # 밀어 넣는 사이에 저장소가 먼저 바뀔 수 있습니다.
-          # (검수 커밋과 자동 수집이 겹칠 때) 그럴 땐 받아서 다시 얹고 재시도합니다.
+          git commit -q -m "발행 $(date -u +%Y-%m-%d\ %H:%M)"
+
           for i in 1 2 3 4 5; do
-            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            if git push origin "HEAD:$B"; then
               echo "저장했습니다."
               exit 0
             fi
             echo "저장소가 먼저 바뀌었습니다 — 다시 맞춰서 시도합니다 ($i/5)"
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || exit 1
+
+            # 여기서 만드는 파일은 전부 '프로그램이 뱉은 결과물'입니다.
+            # 사람이 쓴 글이 아니라 합치는 것 자체가 의미가 없고,
+            # 방금 만든 것이 가장 최신입니다. 그래서 원격 위에 그대로 얹습니다.
+            rm -rf /tmp/새것
+            mkdir -p /tmp/새것
+            for f in docs; do
+              if [ -e "$f" ]; then cp -r "$f" /tmp/새것/; fi
+            done
+
+            git fetch -q origin "$B"
+            git reset -q --hard "origin/$B"
+
+            for f in docs; do
+              if [ -e "/tmp/새것/$f" ]; then rm -rf "$f"; cp -r "/tmp/새것/$f" .; fi
+            done
+            rm -rf __pycache__
+            git rm -r --cached __pycache__ --ignore-unmatch -q || true
+
+            git add -A
+            if git diff --staged --quiet; then
+              echo "이미 반영돼 있습니다."
+              exit 0
+            fi
+            git commit -q -m "발행 $(date -u +%Y-%m-%d\ %H:%M)"
             sleep 3
           done
           echo "다섯 번 시도했지만 저장하지 못했습니다."
